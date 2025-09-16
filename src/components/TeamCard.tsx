@@ -1,4 +1,5 @@
-import { Link } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
+import type { KeyboardEvent, MouseEvent } from 'react'
 import { Team } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Users, Calendar, Shuffle } from 'lucide-react'
@@ -8,6 +9,24 @@ interface TeamCardProps {
 }
 
 export default function TeamCard({ team }: TeamCardProps) {
+  const navigate = useNavigate()
+
+  const handleCardClick = () => {
+    navigate(`/team/${team.id}`)
+  }
+
+  const handleCardKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      handleCardClick()
+    }
+  }
+
+  const handleGenerateClick = (event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation()
+    navigate(`/team/${team.id}/generate`)
+  }
+
   const formatDate = (date: Date) => {
     return new Intl.DateTimeFormat('en-US', {
       month: 'short',
@@ -20,7 +39,13 @@ export default function TeamCard({ team }: TeamCardProps) {
   const canGenerate = playerCount >= 6 // Minimum 6 players to split into 2 teams of 3
 
   return (
-    <div className="p-4 bg-white dark:bg-black border-2 border-black dark:border-white font-mono relative">
+    <div
+      role="link"
+      tabIndex={0}
+      onClick={handleCardClick}
+      onKeyDown={handleCardKeyDown}
+      className="p-4 bg-white dark:bg-black border-2 border-black dark:border-white font-mono relative cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black dark:focus:ring-white"
+    >
       <div className="absolute -top-3 left-4 bg-white dark:bg-black px-2">
         <span className="text-xs uppercase tracking-widest">[ TEAM ]</span>
       </div>
@@ -54,20 +79,11 @@ export default function TeamCard({ team }: TeamCardProps) {
             <Button 
               size="sm" 
               disabled={!canGenerate}
-              asChild={canGenerate}
+              onClick={handleGenerateClick}
               className="flex-2 border-2 border-black dark:border-white bg-black text-white dark:bg-white dark:text-black hover:bg-white hover:text-black dark:hover:bg-black dark:hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors font-mono uppercase text-xs tracking-wider h-8"
             >
-              {canGenerate ? (
-                <Link to={`/team/${team.id}/generate`}>
-                  <Shuffle className="h-3 w-3 mr-1 inline" />
-                  [GENERATE]
-                </Link>
-              ) : (
-                <>
-                  <Shuffle className="h-3 w-3 mr-1 inline" />
-                  [GENERATE]
-                </>
-              )}
+              <Shuffle className="h-3 w-3 mr-1 inline" />
+              [GENERATE]
             </Button>
           </div>
           
