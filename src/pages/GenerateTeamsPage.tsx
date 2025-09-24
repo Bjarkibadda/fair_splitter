@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams, Navigate, Link } from 'react-router-dom'
 import { useTeamsStore } from '@/store/useTeamsStore'
 import { generateBalancedTeams, validateTeamGeneration } from '@/lib/teamGenerator'
@@ -14,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { GeneratedTeam, SplitOptions } from '@/types'
+import { GeneratedTeam, SplitOptions, Position } from '@/types'
 import { Settings, Users, ArrowLeft } from 'lucide-react'
 
 export default function GenerateTeamsPage() {
@@ -30,6 +30,29 @@ export default function GenerateTeamsPage() {
   const [generatedTeams, setGeneratedTeams] = useState<GeneratedTeam[]>([])
   const [errors, setErrors] = useState<string[]>([])
   const [isGenerating, setIsGenerating] = useState(false)
+
+  const recalculateTeamMetrics = useCallback((team: GeneratedTeam): GeneratedTeam => {
+    const positionCount: Record<Position, number> = {
+      goalkeeper: 0,
+      defender: 0,
+      midfielder: 0,
+      forward: 0,
+    }
+
+    const totalRating = team.players.reduce((total, player) => {
+      positionCount[player.position] += 1
+      return total + player.rating
+    }, 0)
+
+    const averageRating = team.players.length > 0 ? totalRating / team.players.length : 0
+
+    return {
+      ...team,
+      totalRating,
+      averageRating,
+      positionCount,
+    }
+  }, [])
 
   useEffect(() => {
     if (teams.length === 0) {
@@ -72,7 +95,7 @@ export default function GenerateTeamsPage() {
       }
 
       const generated = generateBalancedTeams(team.players, splitOptions)
-      setGeneratedTeams(generated)
+      setGeneratedTeams(generated.map(recalculateTeamMetrics))
     } catch (error) {
       console.error('Failed to generate teams:', error)
       setErrors([error instanceof Error ? error.message : 'Failed to generate teams'])
@@ -84,6 +107,71 @@ export default function GenerateTeamsPage() {
   const handleRegenerate = () => {
     handleGenerate()
   }
+
+  const handlePlayerDrop = useCallback((payload: {
+    sourceTeamId: string
+    targetTeamId: string
+    playerId: string
+    targetPlayerId?: string
+  }) => {
+    setGeneratedTeams((prevTeams) => {
+      const sourceIndex = prevTeams.findIndex((t) => t.id === payload.sourceTeamId)
+      const targetIndex = prevTeams.findIndex((t) => t.id === payload.targetTeamId)
+
+      if (sourceIndex === -1 || targetIndex === -1) {
+        return prevTeams
+      }
+
+      if (payload.targetPlayerId && payload.targetPlayerId === payload.playerId) {
+        return prevTeams
+      }
+
+      const sourceTeam = {
+        ...prevTeams[sourceIndex],
+        players: [...prevTeams[sourceIndex].players],
+      }
+
+      const targetTeam = sourceIndex === targetIndex
+        ? sourceTeam
+        : {
+            ...prevTeams[targetIndex],
+            players: [...prevTeams[targetIndex].players],
+          }
+
+      const originalSourceIndex = sourceTeam.players.findIndex((player) => player.id === payload.playerId)
+
+      if (originalSourceIndex === -1) {
+        return prevTeams
+      }
+
+      const [movingPlayer] = sourceTeam.players.splice(originalSourceIndex, 1)
+
+      if (payload.targetPlayerId) {
+        const targetPlayerIndex = targetTeam.players.findIndex((player) => player.id === payload.targetPlayerId)
+
+        if (targetPlayerIndex === -1) {
+          targetTeam.players.push(movingPlayer)
+        } else if (payload.sourceTeamId === payload.targetTeamId) {
+          targetTeam.players.splice(targetPlayerIndex, 0, movingPlayer)
+        } else {
+          const swappedPlayer = targetTeam.players[targetPlayerIndex]
+          targetTeam.players[targetPlayerIndex] = movingPlayer
+          sourceTeam.players.splice(originalSourceIndex, 0, swappedPlayer)
+        }
+      } else {
+        targetTeam.players.push(movingPlayer)
+      }
+
+      const updatedTeams = [...prevTeams]
+      updatedTeams[sourceIndex] = recalculateTeamMetrics(sourceTeam)
+
+      if (sourceIndex !== targetIndex) {
+        updatedTeams[targetIndex] = recalculateTeamMetrics(targetTeam)
+      }
+
+      return updatedTeams
+    })
+  }, [recalculateTeamMetrics])
 
   return (
     <div className="space-y-8">
@@ -210,6 +298,7 @@ export default function GenerateTeamsPage() {
             <GeneratedTeamsDisplay 
               teams={generatedTeams} 
               onRegenerate={handleRegenerate}
+              onPlayerDrop={handlePlayerDrop}
             />
           )}
         </>
